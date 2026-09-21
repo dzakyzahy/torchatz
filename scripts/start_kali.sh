@@ -42,11 +42,14 @@ elif ! pgrep -x "tor" > /dev/null; then
     fi
 fi
 
-# 3. Check / Install Python dependencies
+# 3. Check / Install Python dependencies (Kali/Debian friendly)
 echo -e "\033[1;34m[*] Verifying Python requirements...\033[0m"
-python3 -m pip install -q -r requirements.txt || {
-    echo -e "\033[1;33m[!] Note: If pip is managed by the OS, install via: sudo apt install -y python3-stem python3-socks python3-prompt-toolkit python3-rich\033[0m"
-}
+# Install via apt to comply with Debian/Kali PEP 668 externally-managed-environment
+sudo apt install -y -q python3-stem python3-socks python3-prompt-toolkit python3-rich python3-cryptography 2>/dev/null || true
+
+# Fallback to pip with --break-system-packages flag
+python3 -m pip install -q --break-system-packages -r requirements.txt 2>/dev/null || \
+python3 -m pip install -q -r requirements.txt 2>/dev/null || true
 
 # 4. Launch TorChatZ
 echo -e "\033[1;32m[*] Launching TorChatZ terminal interface...\033[0m"

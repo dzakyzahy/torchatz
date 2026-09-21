@@ -8,10 +8,10 @@ set -e
 
 echo -e "\033[1;36m[*] Setting up Tor Daemon CLI for Kali Linux...\033[0m"
 
-# 1. Install Tor package
-echo -e "\033[1;34m[*] Installing Tor package via apt...\033[0m"
+# 1. Install Tor and Python system packages
+echo -e "\033[1;34m[*] Installing Tor and Python requirements via apt...\033[0m"
 sudo apt update
-sudo apt install -y tor
+sudo apt install -y tor python3-stem python3-socks python3-prompt-toolkit python3-rich python3-cryptography
 
 # 2. Configure /etc/tor/torrc for ControlPort 9051
 TORRC="/etc/tor/torrc"
