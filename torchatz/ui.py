@@ -128,12 +128,22 @@ class TerminalUI:
         table.add_column("Alias", style="bold cyan")
         table.add_column("Onion Address (v3)", style="white")
 
-        if not self.config.contacts:
+        all_onions = set(self.config.contacts.keys())
+        for o, c in self.net_mgr.connections.items():
+            if c.is_alive:
+                all_onions.add(o)
+
+        if not all_onions:
             self.console.print("[yellow]No contacts found. Add one with: /add <onion_address> [alias][/yellow]\n")
             return
 
-        for onion, data in self.config.contacts.items():
-            alias = data.get("alias", onion[:10])
+        for onion in all_onions:
+            data = self.config.contacts.get(onion, {})
+            alias = data.get("alias")
+            if not alias and onion in self.net_mgr.connections:
+                alias = self.net_mgr.connections[onion].peer_username
+            if not alias:
+                alias = onion[:10] + "..."
             online = self.net_mgr.is_peer_online(onion)
             status_text = "[bold green]ONLINE[/bold green]" if online else "[dim red]OFFLINE[/dim red]"
             table.add_row(status_text, alias, onion)
@@ -166,6 +176,12 @@ class TerminalUI:
         alias = self.config.get_alias(sender_onion)
         timestr = time.strftime("%H:%M:%S", time.localtime(ts))
         self.console.print(f"\n[bold magenta][{timestr}] <{sender_username} ({alias})>[/bold magenta] {text}")
+
+        # Auto-select active chat to the incoming sender if not yet set
+        if not self.active_peer_onion:
+            self.active_peer_onion = sender_onion
+            self.active_peer_alias = alias
+            self.console.print(f"[dim]>> Obrolan otomatis disetel ke {alias}. Langsung ketik balasan lalu Enter.[/dim]")
 
     def on_file_start(self, sender_onion: str, sender_username: str, filename: str, filesize: int) -> None:
         alias = self.config.get_alias(sender_onion)
@@ -339,9 +355,22 @@ class TerminalUI:
 
             elif cmd == "/chat":
                 if not arg1:
-                    self.console.print("[red]Usage: /chat <alias_or_onion>[/red]")
+                    connected = [o for o, c in self.net_mgr.connections.items() if c.is_alive]
+                    if connected:
+                        self.console.print("[cyan]Daftar lawan bicara yang sedang terhubung (ONLINE):[/cyan]")
+                        for o in connected:
+                            a = self.config.get_alias(o)
+                            self.console.print(f" • [bold green]/chat {a}[/bold green] ({o[:16]}...)")
+                    else:
+                        self.console.print("[yellow]Belum ada lawan bicara yang terhubung. Ketik /contacts atau /add <onion>[/yellow]")
                 else:
                     onion = self.config.resolve_onion(arg1)
+                    if not onion:
+                        # Check by peer_username of active connections
+                        for o, conn in self.net_mgr.connections.items():
+                            if conn.peer_username.lower() == arg1.lower():
+                                onion = o
+                                break
                     if not onion:
                         self.console.print(f"[red]Could not resolve: {arg1}. Add it first with /add <onion> [alias][/red]")
                     else:
