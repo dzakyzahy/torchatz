@@ -20,11 +20,72 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.formatted_text import HTML
 
 from .config import Config
 from .network import NetworkManager
 from .tor_manager import TorManager
+
+
+def get_clipboard_text() -> str:
+    """Safely retrieves text from the operating system clipboard (Windows & Linux)."""
+    import sys
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            user32.OpenClipboard.argtypes = [wintypes.HWND]
+            user32.OpenClipboard.restype = wintypes.BOOL
+            user32.CloseClipboard.argtypes = []
+            user32.CloseClipboard.restype = wintypes.BOOL
+            user32.GetClipboardData.argtypes = [wintypes.UINT]
+            user32.GetClipboardData.restype = wintypes.HANDLE
+            kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+            kernel32.GlobalLock.restype = wintypes.LPVOID
+            kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+            kernel32.GlobalUnlock.restype = wintypes.BOOL
+            if user32.OpenClipboard(None):
+                try:
+                    h = user32.GetClipboardData(13)  # CF_UNICODETEXT
+                    if h:
+                        p = kernel32.GlobalLock(h)
+                        if p:
+                            try:
+                                return ctypes.c_wchar_p(p).value or ""
+                            finally:
+                                kernel32.GlobalUnlock(h)
+                finally:
+                    user32.CloseClipboard()
+        except Exception:
+            pass
+
+    elif sys.platform.startswith("linux"):
+        import shutil, subprocess
+        for bin_cmd in [["xclip", "-selection", "clipboard", "-o"], ["xsel", "-b", "-o"], ["wl-paste"]]:
+            if shutil.which(bin_cmd[0]):
+                try:
+                    res = subprocess.run(bin_cmd, capture_output=True, text=True, timeout=1)
+                    if res.returncode == 0:
+                        return res.stdout
+                except Exception:
+                    pass
+
+    # Fallback to tkinter
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        val = root.clipboard_get()
+        root.destroy()
+        return val or ""
+    except Exception:
+        pass
+
+    return ""
+
 
 COMMANDS = [
     "/help",
@@ -39,6 +100,7 @@ COMMANDS = [
     "/connect",
     "/reconnect",
     "/chat",
+    "/paste",
     "/send",
     "/sendfile",
     "/files",
@@ -61,7 +123,26 @@ class TerminalUI:
         self.active_peer_alias: Optional[str] = None
         self.history = InMemoryHistory()
         self.completer = WordCompleter(COMMANDS, ignore_case=True)
-        self.session = PromptSession(history=self.history, completer=self.completer)
+
+        self.kb = KeyBindings()
+
+        @self.kb.add('c-v')
+        def _on_paste_cv(event):
+            txt = get_clipboard_text()
+            if txt:
+                event.current_buffer.insert_text(txt)
+
+        @self.kb.add('s-insert')
+        def _on_paste_si(event):
+            txt = get_clipboard_text()
+            if txt:
+                event.current_buffer.insert_text(txt)
+
+        self.session = PromptSession(
+            history=self.history,
+            completer=self.completer,
+            key_bindings=self.kb
+        )
         self.is_running = True
 
     def print_banner(self) -> None:
@@ -101,6 +182,7 @@ class TerminalUI:
         table.add_row("/connect <alias/onion>", "Connect to a peer over Tor network")
         table.add_row("/reconnect", "Retry connecting to all offline contacts")
         table.add_row("/chat <alias/onion>", "Select active peer to chat with (or switch conversation)")
+        table.add_row("/paste", "Paste & send text/code directly from clipboard")
         table.add_row("/send <filepath>", "Send a photo, video, or file to the active peer")
         table.add_row("/files", "List downloaded files in the downloads/ directory")
         table.add_row("/tor [restart]", "Show Tor daemon status or restart onion circuit")
@@ -395,7 +477,30 @@ class TerminalUI:
                         self.console.print(f"[green]Active chat switched to: {self.active_peer_alias} ({self.active_peer_onion})[/green]")
                         # Automatically initiate connection if not already connected
                         if not self.net_mgr.is_peer_online(onion):
-                            self.net_mgr.connect_to_peer(onion)
+            elif cmd == "/paste":
+                if not self.active_peer_onion:
+                    self.console.print("[yellow]No active peer selected. Choose one with /chat <alias>[/yellow]")
+                else:
+                    clip_text = get_clipboard_text()
+                    if not clip_text:
+                        self.console.print("[yellow]Clipboard is empty or could not be read.[/yellow]")
+                    else:
+                        conn = self.net_mgr.get_connection(self.active_peer_onion)
+                        if not conn or not conn.is_alive:
+                            self.console.print(f"[yellow]Peer {self.active_peer_alias} is offline. Attempting to connect...[/yellow]")
+                            self.net_mgr.connect_to_peer(self.active_peer_onion)
+                        else:
+                            if conn.send_chat(clip_text):
+                                timestr = time.strftime("%H:%M:%S")
+                                lines = clip_text.splitlines()
+                                self.console.print(f"[bold cyan][{timestr}] <Me (Pasted {len(lines)} lines / {len(clip_text)} chars)>[/bold cyan]")
+                                if len(lines) <= 12:
+                                    self.console.print(f"[dim]{clip_text}[/dim]")
+                                else:
+                                    preview = "\n".join(lines[:6]) + f"\n... [+{len(lines) - 6} more lines] ..."
+                                    self.console.print(f"[dim]{preview}[/dim]")
+                            else:
+                                self.console.print("[red]Failed to send pasted content. Connection dropped.[/red]")
 
             elif cmd in ("/send", "/sendfile"):
                 if not self.active_peer_onion:
