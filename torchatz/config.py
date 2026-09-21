@@ -7,7 +7,7 @@ import json
 import os
 import secrets
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple, List
 
 DEFAULT_DATA_DIR = Path("data")
 DEFAULT_DOWNLOADS_DIR = Path("downloads")
