@@ -25,6 +25,14 @@ if ! grep -q "^CookieAuthentication 1" "$TORRC"; then
     echo "CookieAuthentication 1" | sudo tee -a "$TORRC" > /dev/null
 fi
 
+if ! grep -q "^CookieAuthFileGroupReadable 1" "$TORRC"; then
+    echo "CookieAuthFileGroupReadable 1" | sudo tee -a "$TORRC" > /dev/null
+fi
+
+if ! grep -q "^DataDirectoryGroupReadable 1" "$TORRC"; then
+    echo "DataDirectoryGroupReadable 1" | sudo tee -a "$TORRC" > /dev/null
+fi
+
 # Add debian-tor permissions for cookie authentication if applicable
 CURRENT_USER=$(whoami)
 sudo usermod -a -G debian-tor "$CURRENT_USER" 2>/dev/null || true
@@ -33,6 +41,8 @@ sudo usermod -a -G debian-tor "$CURRENT_USER" 2>/dev/null || true
 echo -e "\033[1;34m[*] Enabling and starting Tor systemd service...\033[0m"
 sudo systemctl enable tor
 sudo systemctl restart tor
+sleep 1
+sudo chmod 644 /run/tor/control.authcookie /var/run/tor/control.authcookie /var/lib/tor/control_auth_cookie 2>/dev/null || true
 
 # 4. Verify port 9050 & 9051
 echo -e "\033[1;32m[*] Verifying Tor daemon ports...\033[0m"

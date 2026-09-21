@@ -207,17 +207,54 @@ class TorManager:
         if detection["control_found"] and STEM_AVAILABLE:
             try:
                 controller = Controller.from_port(port=self.active_control_port)
-                # Try cookie / null auth
-                try:
-                    controller.authenticate(password=self.config.settings.get("control_password", ""))
-                except stem.connection.AuthenticationFailure:
-                    # Try explicit cookie file if in local data
-                    project_root = Path(__file__).resolve().parent.parent
-                    cookie_path = project_root / "data" / "tor_data" / "control_auth_cookie"
-                    if cookie_path.exists():
-                        controller.authenticate(chroot_path=str(cookie_path.parent))
-                    else:
+                # Try authentication: password, cookie, or null
+                authenticated = False
+                auth_error = ""
+
+                # 1. Try password from config if present
+                passwd = self.config.settings.get("control_password", "")
+                if passwd:
+                    try:
+                        controller.authenticate(password=passwd)
+                        authenticated = True
+                    except Exception as ex:
+                        auth_error = str(ex)
+
+                # 2. Try default authenticate (cookie / null)
+                if not authenticated:
+                    try:
                         controller.authenticate()
+                        authenticated = True
+                    except Exception as ex:
+                        auth_error = str(ex)
+
+                # 3. Try explicit known cookie locations (Linux / Debian / Kali / Windows)
+                if not authenticated:
+                    candidate_cookies = [
+                        Path("/run/tor/control.authcookie"),
+                        Path("/var/run/tor/control.authcookie"),
+                        Path("/var/lib/tor/control_auth_cookie"),
+                        Path(__file__).resolve().parent.parent / "data" / "tor_data" / "control_auth_cookie",
+                    ]
+                    for ck in candidate_cookies:
+                        if ck.exists():
+                            try:
+                                controller.authenticate(chroot_path=str(ck.parent))
+                                authenticated = True
+                                break
+                            except Exception as ex:
+                                auth_error = str(ex)
+
+                if not authenticated:
+                    # Provide helpful hint for Kali / Debian permissions
+                    if "Permission denied" in auth_error or "Authentication" in auth_error:
+                        return False, (
+                            "Failed to authenticate with Tor Control Port 9051 (Permission issue).\n"
+                            "To fix this in Kali Linux, run:\n"
+                            "  sudo chmod 644 /run/tor/control.authcookie\n"
+                            "  ./scripts/setup_tor_kali.sh"
+                        )
+                    return False, f"Tor ControlPort authentication failed: {auth_error}"
 
                 self.controller = controller
 
@@ -249,12 +286,36 @@ class TorManager:
             except Exception as e:
                 pass
 
-        # Static fallback
+        # Static fallback paths (Kali Linux / Debian / Manual)
+        static_paths = [
+            Path("/var/lib/tor/torchatz/hostname"),
+            Path("/var/lib/tor/hidden_service/hostname"),
+            Path("tor_hidden_service/hostname"),
+            Path("data/hostname"),
+        ]
+        for p in static_paths:
+            if p.exists():
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        onion = f.read().strip()
+                        if onion.endswith(".onion"):
+                            self.onion_address = onion
+                            self.config.onion_address = onion
+                            return (True, f"Static v3 Onion Service active: {self.onion_address}")
+                except Exception:
+                    pass
+
+        # Saved config fallback
         if self.config.onion_address:
             self.onion_address = self.config.onion_address
-            return (True, f"Using static Onion address: {self.onion_address}")
+            return (True, f"Using configured Onion address: {self.onion_address}")
 
-        return False, "Failed to authenticate with Tor Control Port 9051."
+        return False, (
+            "Failed to authenticate with Tor Control Port 9051.\n"
+            "To fix on Kali Linux, run:\n"
+            "  sudo chmod 644 /run/tor/control.authcookie\n"
+            "  ./scripts/setup_tor_kali.sh"
+        )
 
     def shutdown(self) -> None:
         """Cleans up ephemeral onion service and terminates self-spawned Tor process."""
