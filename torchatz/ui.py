@@ -581,37 +581,40 @@ class TerminalUI:
                     self.console.print(f"[red]✗ {message}[/red]")
 
             elif cmd in ("/update", "/pull", "/upgrade"):
-                self.console.print("[cyan]Memeriksa update terbaru dari GitHub (git pull)...[/cyan]")
+                force = (arg1.lower() in ("force", "-f", "--force"))
+                if force:
+                    self.console.print("[yellow]Mengambil update paksa dari GitHub (git fetch & reset)...[/yellow]")
+                else:
+                    self.console.print("[cyan]Memeriksa update terbaru dari GitHub (git pull)...[/cyan]")
                 try:
                     import subprocess
                     project_root = Path(__file__).resolve().parent.parent
-                    res = subprocess.run(
-                        ["git", "pull"],
-                        cwd=str(project_root),
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
+                    if force:
+                        subprocess.run(["git", "fetch", "origin"], cwd=str(project_root), capture_output=True, text=True, timeout=30)
+                        res = subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=str(project_root), capture_output=True, text=True, timeout=30)
+                    else:
+                        res = subprocess.run(["git", "pull"], cwd=str(project_root), capture_output=True, text=True, timeout=30)
+
                     out = ((res.stdout or "") + "\n" + (res.stderr or "")).strip()
-                    if "Already up to date" in out or "Sudah up to date" in out:
+                    if not force and ("Already up to date" in out or "Sudah up to date" in out):
                         self.console.print("[bold green]✓ TorChatZ sudah versi paling baru (Already up to date).[/bold green]")
+                        self.console.print("[dim]Tip: Gunakan '/restart' jika ingin memuat ulang aplikasi atau '/update force' jika ada konflik file.[/dim]")
                     elif res.returncode == 0:
-                        self.console.print("[bold green]✓ Update berhasil di-download dari GitHub![/bold green]")
+                        self.console.print("[bold green]✓ Update berhasil diterapkan dari GitHub![/bold green]")
                         self.console.print(f"[dim]{out}[/dim]")
                         self.console.print("[bold yellow]Memuat ulang (restarting) TorChatZ secara otomatis...[/bold yellow]")
                         time.sleep(1)
-                        self.cleanup()
-                        os.execv(sys.executable, [sys.executable] + sys.argv)
+                        self.restart_app()
                     else:
-                        self.console.print(f"[red]Gagal melakukan git pull (error {res.returncode}):[/red]\n{out}")
+                        self.console.print(f"[red]Gagal melakukan update (error {res.returncode}):[/red]\n{out}")
+                        self.console.print("[dim]Tip: Jika ada konflik atau file lokal berubah, jalankan: /update force[/dim]")
                 except Exception as e:
                     self.console.print(f"[red]Error saat menjalankan update: {str(e)}[/red]")
 
             elif cmd in ("/restart", "/reload"):
                 self.console.print("[bold yellow]Memuat ulang (restarting) TorChatZ...[/bold yellow]")
                 time.sleep(0.5)
-                self.cleanup()
-                os.execv(sys.executable, [sys.executable] + sys.argv)
+                self.restart_app()
 
             else:
                 self.console.print(f"[yellow]Unknown command '{cmd}'. Type /help for assistance.[/yellow]")
@@ -637,3 +640,13 @@ class TerminalUI:
     def cleanup(self) -> None:
         self.net_mgr.shutdown()
         self.tor_mgr.shutdown()
+
+    def restart_app(self) -> None:
+        """Cleanly shutdown current instance and restart the application in-place."""
+        self.cleanup()
+        if sys.platform == "win32":
+            import subprocess
+            subprocess.call([sys.executable] + sys.argv)
+            sys.exit(0)
+        else:
+            os.execv(sys.executable, [sys.executable] + sys.argv)
