@@ -206,6 +206,15 @@ class TorManager:
         # Connect to Tor Control Port via stem
         if detection["control_found"] and STEM_AVAILABLE:
             try:
+                # On Linux (Kali), attempt to grant read permission on cookie if needed
+                if sys.platform != "win32":
+                    for ck_path in ["/run/tor/control.authcookie", "/var/run/tor/control.authcookie", "/var/lib/tor/control_auth_cookie"]:
+                        if os.path.exists(ck_path) and not os.access(ck_path, os.R_OK):
+                            try:
+                                subprocess.run(["sudo", "chmod", "644", ck_path], capture_output=True, timeout=2)
+                            except Exception:
+                                pass
+
                 controller = Controller.from_port(port=self.active_control_port)
                 # Try authentication: password, cookie, or null
                 authenticated = False
