@@ -17,11 +17,25 @@ contacts.json
 settings.json
 *.key
 *.onion_key
+*.onion
+*hostname
 tor_data/
 tor_hidden_service/
 tor.log
+*.log
 bin/
 *.tar.gz
+*.zip
+
+# Temporary, test, and scratch files
+scratch/
+test_scratch/
+*.tmp
+*.bak
+*.out
+.pytest_cache/
+.coverage
+htmlcov/
 
 # IDE & OS specific files
 .idea/

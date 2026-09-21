@@ -100,7 +100,7 @@ class TestTorChatZProtocol(unittest.TestCase):
     def test_config_contacts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = Config(data_dir=Path(tmpdir))
-            onion = "expyuz5wqqfdgah56789abcdefghijklmnopqrstuvwxyz12345678.onion"
+            onion = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx.onion"
             config.add_contact(onion, alias="Bob")
 
             resolved = config.resolve_onion("Bob")
@@ -155,18 +155,20 @@ class TestTorChatZProtocol(unittest.TestCase):
             self.assertIsNone(net_mgr.get_connection("testonion123456.onion"))
 
     def test_validate_onion_address(self):
-        # 55 chars (invalid)
-        ok, msg, _ = Config.validate_onion_address("cs4zuoxcioglro3hffmjsjl2bwbcoqzohp2mvyzmlo2fqzgzsnxijqd.onion")
+        # 55 chars (invalid length)
+        ok, msg, _ = Config.validate_onion_address("abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvw.onion")
         self.assertFalse(ok)
         self.assertIn("56 karakter", msg)
 
-        # 56 chars (valid)
-        ok, msg, formatted = Config.validate_onion_address("4to5a3j6g5ioqrdp3a7de7n5x3tb2dfrqdzcwt6kgypkt7qwibtxgryd.onion")
+        # 56 chars (valid base32: a-z, 2-7)
+        valid_onion = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx.onion"
+        ok, msg, formatted = Config.validate_onion_address(valid_onion)
         self.assertTrue(ok)
-        self.assertEqual(formatted, "4to5a3j6g5ioqrdp3a7de7n5x3tb2dfrqdzcwt6kgypkt7qwibtxgryd.onion")
+        self.assertEqual(formatted, valid_onion)
 
-        # Invalid chars (contains 0, 1, 8, 9)
-        ok, msg, _ = Config.validate_onion_address("4to5a3j6g5ioqrdp3a7de7n5x3tb2dfrqdzcwt6kgypkt7qwibtxgry9.onion")
+        # Invalid chars (contains 8 or 9 or 0 or 1 which are not in RFC 4648 Base32)
+        invalid_char_onion = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvw9.onion"
+        ok, msg, _ = Config.validate_onion_address(invalid_char_onion)
         self.assertFalse(ok)
 
     def test_clipboard_copy_and_paste_integrity(self):
@@ -196,8 +198,8 @@ class TestTorChatZProtocol(unittest.TestCase):
                     self.connections = {}
             ui = TerminalUI(config, MockTor(), MockNet())
 
-            # Simulate incoming message
-            ui.on_message_received("testonion123456.onion", "Anon_4fb1", test_multiline_script, 1700000000)
+            # Simulate incoming message with synthetic dummy identity
+            ui.on_message_received("testonion123456.onion", "PeerTest", test_multiline_script, 1700000000)
             self.assertEqual(ui.last_received_message, test_multiline_script)
             self.assertEqual(len(ui.chat_history), 1)
             self.assertEqual(ui.chat_history[0]["text"], test_multiline_script)
