@@ -36,16 +36,14 @@
    cd torchatz
    ```
 
-2. **Setup Tor Daemon CLI (Otomatis)**:
+2. **Jalankan TorChatZ (Otomatis start Tor & Onion)**:
    ```bash
-   chmod +x scripts/*.sh
-   ./scripts/setup_tor_kali.sh
+   chmod +x *.sh scripts/*.sh
+   ./start.sh
    ```
-   *Script ini otomatis menginstal Tor, mengonfigurasi ControlPort 9051, dan mengaktifkan service background.*
-
-3. **Jalankan TorChatZ**:
+   *Atau jalankan via Python:*
    ```bash
-   ./scripts/start_kali.sh
+   python3 torchatz.py
    ```
 
 ---
@@ -53,22 +51,25 @@
 ### 🪟 2. Penggunaan di Windows Terminal / CMD / PowerShell (100% CLI - No GUI)
 
 1. **Clone & Masuk ke Folder**:
-   ```cmd
+   ```powershell
    git clone https://github.com/dzakyzahy/torchatz.git
    cd torchatz
    ```
 
-2. **Install & Jalankan Tor Daemon via CLI (Otomatis)**:
-   ```cmd
-   scripts\install_tor_windows.bat
-   ```
-   *Script ini secara otomatis mendownload Tor Expert Bundle resmi via `curl`, mengekstrak ke `bin\tor`, membuat konfigurasi SOCKS5 + ControlPort 9051, dan menjalankannya di background.*
-
-3. **Jalankan TorChatZ**:
-   ```cmd
-   scripts\start_windows.bat
-   ```
-   *Jika Tor daemon belum jalan, script ini juga otomatis menawarkan download & run dalam 1 klik CLI.*
+2. **Jalankan TorChatZ (Otomatis start Tor & Onion)**:
+   - Di **PowerShell / Windows Terminal**:
+     ```powershell
+     .\start.bat
+     ```
+   - Atau di **CMD**:
+     ```cmd
+     start.bat
+     ```
+   - Atau langsung via **Python**:
+     ```powershell
+     python torchatz.py
+     ```
+   *Script ini otomatis mengunduh Tor Expert Bundle jika belum ada, menyalakan background daemon Tor, dan langsung membuka antarmuka terminal TorChatZ.*
 
 ---
 

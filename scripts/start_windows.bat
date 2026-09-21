@@ -4,6 +4,9 @@ REM TorChatZ - Windows Launcher Script (CMD / PowerShell)
 REM Anonymous P2P Terminal Chat over Tor (v3 Onion Services)
 REM ==============================================================================
 
+cd /d "%~dp0.."
+setlocal enabledelayedexpansion
+
 title TorChatZ - Anonymous Terminal Chat
 color 0B
 
