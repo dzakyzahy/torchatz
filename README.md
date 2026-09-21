@@ -104,7 +104,7 @@
 
 ---
 
-## 🛡️ Arsitektur Anonimitas & Keamanan
+## 🛡️ Arsitektur Anonimitas, Privasi, & Keamanan (Security Model)
 
 ```
 [Peer A: Kali/Windows]
@@ -122,9 +122,32 @@
 [Peer B: Windows/Kali]
 ```
 
-1. **Rute Zero-Leak**: Tidak ada socket yang dibind ke IP publik `0.0.0.0`. Listener hanya mengikat interface loopback `127.0.0.1`.
-2. **Tanpa Perantara**: Tidak ada server cloud / database pusat yang menyimpan riwayat percakapan Anda. Pesan berpindah langsung antar peer via rendezvous circuit.
-3. **Data Sanitization**: Path direktori lokal pengirim (seperti `C:\Users\name\Desktop` atau `/home/kali/`) dipotong habis (`basename`), hanya nama file yang dikirimkan ke penerima.
+### 1. Zero-Leak Network Model
+* **Tidak Ada Port Publik**: Listener socket hanya mengikat interface loopback lokal `127.0.0.1:11009`. Tidak ada port yang dibuka ke IP publik (`0.0.0.0`).
+* **Sirkuit Rendezvous Tor v3**: Seluruh aliran TCP berjalan melalui circuit 6-hop Tor rendezvous terenkripsi ed25519. Lawan bicara tidak dapat melihat IP asli, provider internet (ISP), maupun lokasi geografis Anda.
+
+### 2. Perlindungan Eksekusi Kode Berbahaya (Anti-RCE & Data-Only Payload)
+* **Pesan Bersifat Murni Data**: Semua teks chat, skrip kode (Bash, Python, PowerShell), atau JSON yang dikirimkan oleh lawan chat diperlakukan murni sebagai teks (*data-only payload*).
+* **Zero Shell Execution**: TorChatZ **TIDAK PERNAH** melemparkan teks chat ke `eval()`, `exec()`, `os.system()`, maupun `subprocess`.
+* **Clipboard Sanitization**: Saat Anda menggunakan `/c` untuk menyalin skrip dari lawan bicara, teks disalin langsung ke clipboard sistem operasi laptop Anda agar Anda dapat memeriksa atau menjalankannya secara sadar di editor teks.
+
+### 3. Sanitasi File Transfer & Perlindungan Direktori (Anti-Path Traversal)
+* Pengirim tidak dapat mengarahkan penulisan file ke luar folder `downloads/`. Karakter traversal seperti `../` atau `..\` disanitasi secara otomatis (`Path(filename).name`).
+* Setiap file diverifikasi menggunakan hash **SHA-256 Checksum** sebelum diakui berhasil.
+* Path folder sistem pengirim (seperti `C:\Users\username\Desktop` atau `/home/kali/`) dipangkas habis sebelum frame dikirimkan sehingga tidak membocorkan struktur OS pengirim.
+
+### 4. Privasi Kunci Rahasia & Data Lokal
+* Kunci privat onion (`ED25519-V3`), alamat kontak tersimpan (`contacts.json`), dan pengaturan (`settings.json`) tersimpan murni di laptop Anda (folder `data/`).
+* File data rahasia dilindungi oleh `.gitignore` dan **tidak akan pernah ter-upload ke repositori GitHub**.
+
+---
+
+## 🔧 Troubleshooting
+
+* **Status Kontak Masih OFFLINE setelah `/add`?**
+  * **Waktu Propagasi Tor**: Alamat onion v3 baru membutuhkan waktu 30–60 detik untuk mempropagasi descriptor-nya ke direktori terdistribusi Tor (HSDir). Tunggu sebentar lalu ketik `/connect <alias>` atau `/reconnect`.
+  * **Sinkronisasi Jam (Clock Sync)**: Onion Services v3 mengandalkan penanggalan berbasis waktu yang ketat. Pastikan jam pada laptop Kali Linux dan laptop Windows Anda tersinkronisasi (*accurate NTP time*).
+  * **Validasi 56 Karakter**: Pastikan seluruh 56 karakter alamat `.onion` tersalin lengkap tanpa ada karakter yang terpotong. Gunakan `/add <onion> [alias]`.
 
 ---
 
@@ -138,15 +161,16 @@ TorChatZ/
 │   ├── config.py          # Pengaturan, identitas & kontak lokal
 │   ├── tor_manager.py     # Kontroler Tor daemon & Onion v3 service
 │   ├── protocol.py        # Frame serialization & packet definition
-│   ├── network.py         # SOCKS5 client & loopback listener
+│   ├── network.py         # SOCKS5 client, loopback listener & RLock
 │   ├── file_transfer.py   # Engine transfer chunk file & hash SHA-256
-│   └── ui.py              # Antarmuka terminal Rich & prompt_toolkit
+│   └── ui.py              # Antarmuka terminal Rich & prompt_toolkit (/c, /p, /update)
 ├── scripts/
 │   ├── start_kali.sh      # Script runner untuk Kali Linux
-│   └── start_windows.bat  # Script runner untuk Windows CMD
+│   └── start_windows.bat  # Script runner untuk Windows CMD/PowerShell
+├── tests/                 # Test suite unit & integration (10 passing tests)
 ├── torrc.template         # Template konfigurasi torrc
 ├── requirements.txt       # Dependensi Python
-├── .gitignore
+├── .gitignore             # Pengamanan file rahasia lokal
 ├── LICENSE                # MIT License
 └── README.md
 ```
