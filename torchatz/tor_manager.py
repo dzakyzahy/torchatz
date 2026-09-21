@@ -336,21 +336,24 @@ class TorManager:
             "  ./scripts/setup_tor_kali.sh"
         )
 
-    def shutdown(self) -> None:
+    def shutdown(self, terminate_tor: bool = True) -> None:
         """Cleans up ephemeral onion service and terminates self-spawned Tor process."""
-        if self.controller and self._service_id:
-            try:
-                self.controller.remove_ephemeral_hidden_service(self._service_id)
-            except Exception:
-                pass
+        if self.controller:
+            if self._service_id:
+                try:
+                    self.controller.remove_ephemeral_hidden_service(self._service_id)
+                except Exception:
+                    pass
             try:
                 self.controller.close()
             except Exception:
                 pass
+            self.controller = None
 
-        if self.is_self_spawned and self.tor_process:
+        if terminate_tor and self.is_self_spawned and self.tor_process:
             try:
                 self.tor_process.terminate()
                 self.tor_process.wait(timeout=2)
             except Exception:
                 pass
+            self.tor_process = None

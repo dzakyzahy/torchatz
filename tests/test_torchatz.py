@@ -207,6 +207,42 @@ class TestTorChatZProtocol(unittest.TestCase):
             res_c = get_clipboard_text().replace("\r\n", "\n")
             self.assertEqual(res_c, test_multiline_script)
 
+    def test_shutdown_no_deadlock_with_active_connections(self):
+        from torchatz.network import NetworkManager
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config(data_dir=Path(tmpdir))
+            file_mgr = FileTransferManager(Path(tmpdir) / "downloads")
+
+            net_mgr = NetworkManager(
+                config=config,
+                file_mgr=file_mgr,
+                on_message=lambda s, u, t, ts: None,
+                on_file_start=lambda s, u, fn, sz: None,
+                on_file_progress=lambda s, fn, r, tot: None,
+                on_file_complete=lambda s, u, p, ok, m: None,
+                on_status_change=lambda o, u, st: None,
+                on_system_log=lambda lvl, msg: None,
+            )
+
+            class MockConn:
+                def __init__(self, onion):
+                    self.peer_onion = onion
+                    self.peer_username = "PeerTest"
+                    self.is_alive = True
+                def close(self, notify: bool = True):
+                    self.is_alive = False
+                    if notify:
+                        net_mgr._handle_peer_status(self, self.peer_onion, self.peer_username, "disconnected")
+
+            # Register connection
+            conn = MockConn("testonion123456.onion")
+            net_mgr.connections["testonion123456.onion"] = conn
+
+            # Shutdown should complete without deadlock or hanging
+            net_mgr.shutdown()
+            self.assertFalse(net_mgr._is_running)
+            self.assertEqual(len(net_mgr.connections), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

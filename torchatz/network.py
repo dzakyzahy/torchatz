@@ -251,7 +251,7 @@ class PeerConnection:
         except TypeError:
             self.on_status_change(self.peer_onion or "unknown", self.peer_username, status)
 
-    def close(self) -> None:
+    def close(self, notify: bool = True) -> None:
         if self.is_alive:
             self.is_alive = False
             try:
@@ -262,7 +262,7 @@ class PeerConnection:
                 self.sock.close()
             except Exception:
                 pass
-            if self.peer_onion:
+            if notify and self.peer_onion:
                 self._notify_status("disconnected")
 
 
@@ -289,7 +289,7 @@ class NetworkManager:
         self.on_system_log = on_system_log
 
         self.connections: Dict[str, PeerConnection] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._listener_sock: Optional[socket.socket] = None
         self._is_running = True
 
@@ -452,6 +452,8 @@ class NetworkManager:
             except Exception:
                 pass
         with self._lock:
-            for conn in list(self.connections.values()):
-                conn.close()
+            active_conns = list(self.connections.values())
             self.connections.clear()
+
+        for conn in active_conns:
+            conn.close(notify=False)

@@ -798,16 +798,21 @@ class TerminalUI:
             else:
                 self.console.print("[red]Failed to send message. Connection dropped.[/red]")
 
-    def cleanup(self) -> None:
+    def cleanup(self, keep_tor: bool = False) -> None:
         self.net_mgr.shutdown()
-        self.tor_mgr.shutdown()
+        self.tor_mgr.shutdown(terminate_tor=(not keep_tor))
 
     def restart_app(self) -> None:
         """Cleanly shutdown current instance and restart the application in-place."""
-        self.cleanup()
+        self.cleanup(keep_tor=True)
+        time.sleep(0.3)
+        entry_script = Path(sys.argv[0]).resolve()
+        if not entry_script.exists():
+            entry_script = Path(__file__).resolve().parent.parent / "torchatz.py"
+        cmd = [sys.executable, str(entry_script)] + sys.argv[1:]
         if sys.platform == "win32":
             import subprocess
-            subprocess.call([sys.executable] + sys.argv)
+            subprocess.call(cmd)
             sys.exit(0)
         else:
-            os.execv(sys.executable, [sys.executable] + sys.argv)
+            os.execv(sys.executable, cmd)
