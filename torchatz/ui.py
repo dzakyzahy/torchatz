@@ -31,6 +31,8 @@ COMMANDS = [
     "/myid",
     "/nick",
     "/add",
+    "/alias",
+    "/rename",
     "/del",
     "/contacts",
     "/list",
@@ -93,6 +95,7 @@ class TerminalUI:
         table.add_row("/myid", "Display your .onion address and current configuration")
         table.add_row("/nick <username>", "Change your pseudonymous display name")
         table.add_row("/add <onion> [alias]", "Add a peer to contacts and connect immediately")
+        table.add_row("/alias <old> <new>", "Rename alias of a contact (or /rename)")
         table.add_row("/del <alias/onion>", "Remove a peer from your contacts")
         table.add_row("/contacts or /list", "List all saved contacts and their online/offline status")
         table.add_row("/connect <alias/onion>", "Connect to a peer over Tor network")
@@ -325,6 +328,19 @@ class TerminalUI:
                         self.console.print(f"[green]Added contact: {alias} ({onion})[/green]")
                         # Auto-connect immediately
                         self.net_mgr.connect_to_peer(onion)
+
+            elif cmd in ("/alias", "/rename"):
+                if not arg1 or not arg2:
+                    self.console.print("[red]Usage: /alias <old_alias_or_onion> <new_alias>[/red]")
+                else:
+                    ok, msg = self.config.update_alias(arg1, arg2)
+                    if ok:
+                        self.console.print(f"[green]✓ {msg}[/green]")
+                        onion = self.config.resolve_onion(arg2)
+                        if onion and onion == self.active_peer_onion:
+                            self.active_peer_alias = arg2
+                    else:
+                        self.console.print(f"[red]✗ {msg}[/red]")
 
             elif cmd == "/del":
                 if not arg1:

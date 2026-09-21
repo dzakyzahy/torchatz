@@ -169,6 +169,21 @@ class Config:
             return True
         return False
 
+    def update_alias(self, identifier: str, new_alias: str) -> Tuple[bool, str]:
+        """Updates the alias for an existing contact."""
+        onion = self.resolve_onion(identifier)
+        if not onion or onion not in self.contacts:
+            return False, f"Kontak '{identifier}' tidak ditemukan."
+
+        clean_alias = new_alias.strip()[:24]
+        if not clean_alias:
+            return False, "Nama alias baru tidak boleh kosong."
+
+        old_alias = self.contacts[onion].get("alias", onion[:10])
+        self.contacts[onion]["alias"] = clean_alias
+        self.save_contacts()
+        return True, f"Alias '{old_alias}' berhasil diperbarui menjadi: '{clean_alias}'"
+
     def resolve_onion(self, identifier: str) -> Optional[str]:
         """Resolves alias or partial/full onion address to full onion address."""
         identifier = identifier.strip().lower()

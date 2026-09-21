@@ -107,9 +107,15 @@ class TestTorChatZProtocol(unittest.TestCase):
             self.assertEqual(resolved, onion)
             self.assertEqual(config.get_alias(onion), "Bob")
 
+            # Update alias
+            ok, msg = config.update_alias("Bob", "Bobby")
+            self.assertTrue(ok)
+            self.assertEqual(config.get_alias(onion), "Bobby")
+            self.assertEqual(config.resolve_onion("Bobby"), onion)
+
             # Remove contact
-            self.assertTrue(config.remove_contact("Bob"))
-            self.assertIsNone(config.resolve_onion("Bob"))
+            self.assertTrue(config.remove_contact("Bobby"))
+            self.assertIsNone(config.resolve_onion("Bobby"))
 
     def test_inbound_peer_registration_and_status(self):
         from torchatz.network import NetworkManager
