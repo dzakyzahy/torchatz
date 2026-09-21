@@ -340,7 +340,8 @@ class NetworkManager:
                 sock.set_proxy(
                     socks.SOCKS5,
                     self.config.settings.get("socks_host", "127.0.0.1"),
-                    self.config.socks_port
+                    self.config.socks_port,
+                    rdns=True
                 )
                 sock.settimeout(60.0)  # Onion circuits can take up to 30-45s on first handshake
                 sock.connect((peer_onion, port))
@@ -362,10 +363,15 @@ class NetworkManager:
                 with self._lock:
                     self.connections[peer_onion] = peer
 
-                self.on_system_log("success", f"Connected to {peer_onion}")
+                self.on_system_log("success", f"Connected to {self.config.get_alias(peer_onion)} ({peer_onion[:12]}...onion)")
 
             except Exception as e:
-                self.on_system_log("error", f"Connection failed to {peer_onion}: {str(e)}")
+                err_msg = str(e)
+                alias = self.config.get_alias(peer_onion)
+                hint = ""
+                if "0x05" in err_msg or "0x04" in err_msg or "timed out" in err_msg or "refused" in err_msg:
+                    hint = " (Note: Tor v3 takes 30-60s to publish descriptors across the Tor network after startup. Both laptops should /add each other, wait ~30s, and retry with /connect)"
+                self.on_system_log("error", f"Connection failed to {alias}: {err_msg}{hint}")
 
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
