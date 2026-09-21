@@ -111,6 +111,43 @@ class TestTorChatZProtocol(unittest.TestCase):
             self.assertTrue(config.remove_contact("Bob"))
             self.assertIsNone(config.resolve_onion("Bob"))
 
+    def test_inbound_peer_registration_and_status(self):
+        from torchatz.network import NetworkManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config(data_dir=Path(tmpdir))
+            file_mgr = FileTransferManager(Path(tmpdir) / "downloads")
+
+            statuses = []
+            net_mgr = NetworkManager(
+                config=config,
+                file_mgr=file_mgr,
+                on_message=lambda s, u, t, ts: None,
+                on_file_start=lambda s, u, fn, sz: None,
+                on_file_progress=lambda s, fn, r, tot: None,
+                on_file_complete=lambda s, u, p, ok, m: None,
+                on_status_change=lambda o, u, st: statuses.append((o, u, st)),
+                on_system_log=lambda lvl, msg: None,
+            )
+
+            class MockPeer:
+                def __init__(self, onion):
+                    self.peer_onion = onion
+                    self.is_alive = True
+
+            mock_peer = MockPeer("testonion123456.onion")
+            net_mgr._handle_peer_status(mock_peer, "testonion123456.onion", "Bob", "connected")
+
+            self.assertTrue(net_mgr.is_peer_online("testonion123456.onion"))
+            self.assertEqual(net_mgr.get_connection("testonion123456.onion"), mock_peer)
+            self.assertEqual(len(statuses), 1)
+            self.assertEqual(statuses[0], ("testonion123456.onion", "Bob", "connected"))
+
+            # Disconnect
+            net_mgr._handle_peer_status(mock_peer, "testonion123456.onion", "Bob", "disconnected")
+            self.assertFalse(net_mgr.is_peer_online("testonion123456.onion"))
+            self.assertIsNone(net_mgr.get_connection("testonion123456.onion"))
+
 
 if __name__ == "__main__":
     unittest.main()

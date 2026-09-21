@@ -36,7 +36,7 @@ class PeerConnection:
         on_file_start: Callable[[str, str, str, int], None],
         on_file_progress: Callable[[str, str, int, int], None],
         on_file_complete: Callable[[str, str, str, bool, str], None],
-        on_status_change: Callable[[str, str, str], None],
+        on_status_change: Callable[..., None],
         target_onion: Optional[str] = None
     ):
         self.sock = sock
@@ -179,7 +179,7 @@ class PeerConnection:
                     username=self.config.username,
                     session_id=self.session_id
                 ))
-            self.on_status_change(self.peer_onion or "unknown", self.peer_username, "connected")
+            self._notify_status("connected")
 
         elif msg_type == MessageType.HANDSHAKE_ACK:
             peer_onion = payload.get("onion", "").strip().lower()
@@ -188,7 +188,7 @@ class PeerConnection:
                 self.peer_onion = peer_onion
             self.peer_username = peer_username
             self.is_authenticated = True
-            self.on_status_change(self.peer_onion or "unknown", self.peer_username, "connected")
+            self._notify_status("connected")
 
         elif msg_type == MessageType.PING:
             self.send_frame(Protocol.create_pong())
@@ -245,6 +245,12 @@ class PeerConnection:
         elif msg_type == MessageType.DISCONNECT:
             self.close()
 
+    def _notify_status(self, status: str) -> None:
+        try:
+            self.on_status_change(self, self.peer_onion or "unknown", self.peer_username, status)
+        except TypeError:
+            self.on_status_change(self.peer_onion or "unknown", self.peer_username, status)
+
     def close(self) -> None:
         if self.is_alive:
             self.is_alive = False
@@ -257,7 +263,7 @@ class PeerConnection:
             except Exception:
                 pass
             if self.peer_onion:
-                self.on_status_change(self.peer_onion, self.peer_username, "disconnected")
+                self._notify_status("disconnected")
 
 
 class NetworkManager:
@@ -320,7 +326,7 @@ class NetworkManager:
             except Exception:
                 break
 
-    def connect_to_peer(self, peer_onion: str, port: int = 11009) -> Tuple[bool, str]:
+    def connect_to_peer(self, peer_onion: str, port: int = 11009, silent: bool = False) -> Tuple[bool, str]:
         """Initiates an outbound SOCKS5 connection to <peer>.onion:<port> through Tor."""
         if not SOCKS_AVAILABLE:
             return False, "PySocks is not installed. Please run: pip install PySocks"
@@ -345,10 +351,11 @@ class NetworkManager:
                     if peer_onion in self.connections and self.connections[peer_onion].is_alive:
                         return
 
-                if attempt == 1:
-                    self.on_system_log("info", f"Building Tor circuit to {alias} ({peer_onion[:12]}...onion)")
-                else:
-                    self.on_system_log("info", f"Retrying circuit to {alias} (attempt {attempt}/{max_retries}, awaiting Tor descriptor propagation)...")
+                if not silent:
+                    if attempt == 1:
+                        self.on_system_log("info", f"Building Tor circuit to {alias} ({peer_onion[:12]}...onion)")
+                    else:
+                        self.on_system_log("info", f"Retrying circuit to {alias} (attempt {attempt}/{max_retries}, awaiting Tor descriptor propagation)...")
 
                 try:
                     sock = socks.socksocket()
@@ -387,26 +394,44 @@ class NetworkManager:
                         time.sleep(8)
                         continue
                     else:
-                        hint = ""
-                        if "0x01" in err_msg or "0x05" in err_msg or "0x04" in err_msg:
-                            hint = " (Tip: Peer's Tor descriptor is still propagating globally or peer laptop is offline. Make sure both laptops have /add-ed each other and retry /connect in 30s)"
-                        self.on_system_log("error", f"Connection failed to {alias}: {err_msg}{hint}")
+                        if not silent:
+                            hint = ""
+                            if "0x01" in err_msg or "0x05" in err_msg or "0x04" in err_msg:
+                                hint = " (Tip: Peer's Tor descriptor is still propagating globally or peer laptop is offline. Make sure both laptops have /add-ed each other and retry /connect in 30s)"
+                            self.on_system_log("error", f"Connection failed to {alias}: {err_msg}{hint}")
                         break
 
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
         return True, f"Connecting to {peer_onion} in background..."
 
-    def _handle_peer_status(self, onion: str, username: str, status: str) -> None:
+    def reconnect_contacts(self, silent: bool = False) -> None:
+        """Attempts to connect to all contacts that are currently offline."""
+        for onion in list(self.config.contacts.keys()):
+            if not self.is_peer_online(onion):
+                self.connect_to_peer(onion, silent=silent)
+
+    def _handle_peer_status(self, *args) -> None:
+        """Handles peer connection/disconnection notifications."""
+        if len(args) == 4:
+            peer, onion, username, status = args
+        elif len(args) == 3:
+            peer, onion, username, status = None, args[0], args[1], args[2]
+        else:
+            return
+
         with self._lock:
             if status == "connected" and onion:
-                # Find and register
-                for p in list(self.connections.values()):
-                    if p.peer_onion == onion:
-                        self.connections[onion] = p
+                if peer:
+                    self.connections[onion] = peer
+                else:
+                    for p in list(self.connections.values()):
+                        if p.peer_onion == onion:
+                            self.connections[onion] = p
             elif status == "disconnected":
                 if onion in self.connections:
-                    del self.connections[onion]
+                    if peer is None or self.connections.get(onion) == peer:
+                        del self.connections[onion]
 
         self.on_status_change(onion, username, status)
 

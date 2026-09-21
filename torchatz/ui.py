@@ -7,6 +7,7 @@ history, and rich color rendering.
 import sys
 import os
 import time
+import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -34,6 +35,7 @@ COMMANDS = [
     "/contacts",
     "/list",
     "/connect",
+    "/reconnect",
     "/chat",
     "/send",
     "/sendfile",
@@ -90,10 +92,11 @@ class TerminalUI:
 
         table.add_row("/myid", "Display your .onion address and current configuration")
         table.add_row("/nick <username>", "Change your pseudonymous display name")
-        table.add_row("/add <onion> [alias]", "Add a peer to your contact list with optional alias")
+        table.add_row("/add <onion> [alias]", "Add a peer to contacts and connect immediately")
         table.add_row("/del <alias/onion>", "Remove a peer from your contacts")
         table.add_row("/contacts or /list", "List all saved contacts and their online/offline status")
         table.add_row("/connect <alias/onion>", "Connect to a peer over Tor network")
+        table.add_row("/reconnect", "Retry connecting to all offline contacts")
         table.add_row("/chat <alias/onion>", "Select active peer to chat with (or switch conversation)")
         table.add_row("/send <filepath>", "Send a photo, video, or file to the active peer")
         table.add_row("/files", "List downloaded files in the downloads/ directory")
@@ -189,9 +192,12 @@ class TerminalUI:
     def on_status_change(self, onion: str, username: str, status: str) -> None:
         alias = self.config.get_alias(onion)
         if status == "connected":
-            self.console.print(f"\n[bold green]● Peer connected:[/bold green] {username} ([cyan]{alias}[/cyan])")
+            if onion not in self.config.contacts and onion and onion != "unknown":
+                self.config.add_contact(onion, username)
+                alias = username
+            self.console.print(f"\n[bold green]● Peer connected:[/bold green] {username} ([cyan]{alias}[/cyan]) - [bold green]ONLINE[/bold green]")
         elif status == "disconnected":
-            self.console.print(f"\n[bold red]○ Peer disconnected:[/bold red] {username} ([dim]{alias}[/dim])")
+            self.console.print(f"\n[bold red]○ Peer disconnected:[/bold red] {username} ([dim]{alias}[/dim]) - [dim red]OFFLINE[/dim red]")
 
     def on_system_log(self, level: str, message: str) -> None:
         color = {"info": "cyan", "success": "green", "warning": "yellow", "error": "red"}.get(level, "white")
@@ -200,6 +206,23 @@ class TerminalUI:
     # --- User Input Loop ---
     def run(self) -> None:
         self.print_banner()
+
+        # Background worker: auto-connect to contacts on startup and periodically check offline contacts
+        def _auto_connect_loop():
+            time.sleep(3)
+            while self.is_running:
+                if self.config.contacts:
+                    for onion in list(self.config.contacts.keys()):
+                        if not self.is_running:
+                            break
+                        if not self.net_mgr.is_peer_online(onion):
+                            self.net_mgr.connect_to_peer(onion, silent=True)
+                for _ in range(45):
+                    if not self.is_running:
+                        break
+                    time.sleep(1)
+
+        threading.Thread(target=_auto_connect_loop, daemon=True).start()
 
         while self.is_running:
             try:
@@ -282,6 +305,8 @@ class TerminalUI:
                     onion = self.config.add_contact(arg1, arg2 or None)
                     alias = self.config.get_alias(onion)
                     self.console.print(f"[green]Added contact: {alias} ({onion})[/green]")
+                    # Auto-connect immediately
+                    self.net_mgr.connect_to_peer(onion)
 
             elif cmd == "/del":
                 if not arg1:
@@ -301,6 +326,10 @@ class TerminalUI:
                         self.console.print(f"[red]Could not resolve onion address for: {arg1}[/red]")
                     else:
                         self.net_mgr.connect_to_peer(onion)
+
+            elif cmd == "/reconnect":
+                self.console.print("[cyan]Attempting to reconnect to all offline contacts...[/cyan]")
+                self.net_mgr.reconnect_contacts(silent=False)
 
             elif cmd == "/chat":
                 if not arg1:
