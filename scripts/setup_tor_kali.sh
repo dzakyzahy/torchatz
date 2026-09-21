@@ -21,16 +21,10 @@ if ! grep -q "^ControlPort 9051" "$TORRC"; then
     echo "ControlPort 9051" | sudo tee -a "$TORRC" > /dev/null
 fi
 
-if ! grep -q "^CookieAuthentication 1" "$TORRC"; then
-    echo "CookieAuthentication 1" | sudo tee -a "$TORRC" > /dev/null
-fi
-
-if ! grep -q "^CookieAuthFileGroupReadable 1" "$TORRC"; then
-    echo "CookieAuthFileGroupReadable 1" | sudo tee -a "$TORRC" > /dev/null
-fi
-
-if ! grep -q "^DataDirectoryGroupReadable 1" "$TORRC"; then
-    echo "DataDirectoryGroupReadable 1" | sudo tee -a "$TORRC" > /dev/null
+# Set CookieAuthentication 0 for seamless localhost access without permission conflicts
+sudo sed -i 's/^CookieAuthentication 1/CookieAuthentication 0/' "$TORRC" 2>/dev/null || true
+if ! grep -q "^CookieAuthentication 0" "$TORRC"; then
+    echo "CookieAuthentication 0" | sudo tee -a "$TORRC" > /dev/null
 fi
 
 # Add debian-tor permissions for cookie authentication if applicable
