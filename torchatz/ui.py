@@ -110,6 +110,10 @@ COMMANDS = [
     "/tor",
     "/onion",
     "/clear",
+    "/update",
+    "/pull",
+    "/restart",
+    "/reload",
     "/quit",
     "/exit",
 ]
@@ -192,6 +196,8 @@ class TerminalUI:
         table.add_row("/send <filepath>", "Send a photo, video, or file to the active peer")
         table.add_row("/files", "List downloaded files in the downloads/ directory")
         table.add_row("/tor [restart]", "Show Tor daemon status or restart onion circuit")
+        table.add_row("/update or /pull", "Pull latest updates from GitHub and auto-reload")
+        table.add_row("/restart", "Restart TorChatZ without closing terminal")
         table.add_row("/clear", "Clear terminal screen")
         table.add_row("/help", "Show this help screen")
         table.add_row("/quit or /exit", "Exit TorChatZ cleanly")
@@ -573,6 +579,39 @@ class TerminalUI:
                     self.console.print(f"[green]✓ {message}[/green]")
                 else:
                     self.console.print(f"[red]✗ {message}[/red]")
+
+            elif cmd in ("/update", "/pull", "/upgrade"):
+                self.console.print("[cyan]Memeriksa update terbaru dari GitHub (git pull)...[/cyan]")
+                try:
+                    import subprocess
+                    project_root = Path(__file__).resolve().parent.parent
+                    res = subprocess.run(
+                        ["git", "pull"],
+                        cwd=str(project_root),
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    out = ((res.stdout or "") + "\n" + (res.stderr or "")).strip()
+                    if "Already up to date" in out or "Sudah up to date" in out:
+                        self.console.print("[bold green]✓ TorChatZ sudah versi paling baru (Already up to date).[/bold green]")
+                    elif res.returncode == 0:
+                        self.console.print("[bold green]✓ Update berhasil di-download dari GitHub![/bold green]")
+                        self.console.print(f"[dim]{out}[/dim]")
+                        self.console.print("[bold yellow]Memuat ulang (restarting) TorChatZ secara otomatis...[/bold yellow]")
+                        time.sleep(1)
+                        self.cleanup()
+                        os.execv(sys.executable, [sys.executable] + sys.argv)
+                    else:
+                        self.console.print(f"[red]Gagal melakukan git pull (error {res.returncode}):[/red]\n{out}")
+                except Exception as e:
+                    self.console.print(f"[red]Error saat menjalankan update: {str(e)}[/red]")
+
+            elif cmd in ("/restart", "/reload"):
+                self.console.print("[bold yellow]Memuat ulang (restarting) TorChatZ...[/bold yellow]")
+                time.sleep(0.5)
+                self.cleanup()
+                os.execv(sys.executable, [sys.executable] + sys.argv)
 
             else:
                 self.console.print(f"[yellow]Unknown command '{cmd}'. Type /help for assistance.[/yellow]")
