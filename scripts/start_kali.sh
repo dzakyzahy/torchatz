@@ -15,14 +15,29 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# 2. Check Tor service
-if ! pgrep -x "tor" > /dev/null; then
+# 2. Check and auto-configure Tor service
+if [ -f /etc/tor/torrc ]; then
+    NEEDS_RESTART=0
+    if ! grep -q "^ControlPort 9051" /etc/tor/torrc; then
+        echo "ControlPort 9051" | sudo tee -a /etc/tor/torrc >/dev/null
+        NEEDS_RESTART=1
+    fi
+    if grep -q "^CookieAuthentication 1" /etc/tor/torrc || ! grep -q "^CookieAuthentication 0" /etc/tor/torrc; then
+        sudo sed -i 's/^CookieAuthentication 1/CookieAuthentication 0/' /etc/tor/torrc 2>/dev/null || true
+        grep -q "^CookieAuthentication 0" /etc/tor/torrc || echo "CookieAuthentication 0" | sudo tee -a /etc/tor/torrc >/dev/null
+        NEEDS_RESTART=1
+    fi
+    if [ "$NEEDS_RESTART" -eq 1 ] || ! pgrep -x "tor" > /dev/null; then
+        echo -e "\033[1;34m[*] Applying Tor configuration and starting service...\033[0m"
+        sudo systemctl restart tor 2>/dev/null || sudo service tor restart 2>/dev/null || sudo systemctl start tor 2>/dev/null || true
+        sleep 1
+    fi
+elif ! pgrep -x "tor" > /dev/null; then
     echo -e "\033[1;33m[!] Tor service is not running.\033[0m"
     if [ -f "$(dirname "$0")/setup_tor_kali.sh" ]; then
         echo -e "\033[1;34m[*] Running automatic Tor CLI setup...\033[0m"
         bash "$(dirname "$0")/setup_tor_kali.sh" || true
     else
-        echo -e "\033[1;32m[*] Attempting to start Tor service (sudo systemctl start tor)...\033[0m"
         sudo systemctl start tor || true
     fi
 fi

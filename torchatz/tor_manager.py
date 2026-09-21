@@ -254,16 +254,26 @@ class TorManager:
                             except Exception as ex:
                                 auth_error = str(ex)
 
+                if not authenticated and sys.platform != "win32":
+                    try:
+                        # Attempt autonomous fix for Kali Linux
+                        torrc = Path("/etc/tor/torrc")
+                        if torrc.exists():
+                            subprocess.run(["sudo", "sed", "-i", "s/^CookieAuthentication 1/CookieAuthentication 0/", str(torrc)], capture_output=True, timeout=3)
+                            subprocess.run(["sudo", "systemctl", "restart", "tor"], capture_output=True, timeout=5)
+                            time.sleep(1.5)
+                            controller = Controller.from_port(port=self.active_control_port)
+                            controller.authenticate()
+                            authenticated = True
+                    except Exception:
+                        pass
+
                 if not authenticated:
-                    # Provide helpful hint for Kali / Debian permissions
-                    if "Permission denied" in auth_error or "Authentication" in auth_error:
-                        return False, (
-                            "Failed to authenticate with Tor Control Port 9051 (Permission issue).\n"
-                            "To fix this in Kali Linux, run:\n"
-                            "  sudo chmod 644 /run/tor/control.authcookie\n"
-                            "  ./scripts/setup_tor_kali.sh"
-                        )
-                    return False, f"Tor ControlPort authentication failed: {auth_error}"
+                    return False, (
+                        "Failed to authenticate with Tor Control Port 9051.\n"
+                        "To fix in Kali Linux, run:\n"
+                        "  ./scripts/setup_tor_kali.sh"
+                    )
 
                 self.controller = controller
 
