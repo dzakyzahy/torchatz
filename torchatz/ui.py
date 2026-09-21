@@ -38,6 +38,8 @@ COMMANDS = [
     "/send",
     "/sendfile",
     "/files",
+    "/tor",
+    "/onion",
     "/clear",
     "/quit",
     "/exit",
@@ -95,6 +97,7 @@ class TerminalUI:
         table.add_row("/chat <alias/onion>", "Select active peer to chat with (or switch conversation)")
         table.add_row("/send <filepath>", "Send a photo, video, or file to the active peer")
         table.add_row("/files", "List downloaded files in the downloads/ directory")
+        table.add_row("/tor [restart]", "Show Tor daemon status or restart onion circuit")
         table.add_row("/clear", "Clear terminal screen")
         table.add_row("/help", "Show this help screen")
         table.add_row("/quit or /exit", "Exit TorChatZ cleanly")
@@ -235,6 +238,25 @@ class TerminalUI:
 
             elif cmd == "/myid":
                 self.print_my_id()
+
+            elif cmd in ("/tor", "/onion"):
+                if arg1.lower() == "restart":
+                    self.console.print("[yellow]Restarting Tor Onion service...[/yellow]")
+                    self.tor_mgr.shutdown()
+                    ok, msg = self.tor_mgr.setup_onion_service(self.config.listen_port)
+                    if ok:
+                        self.console.print(f"[green]✓ {msg}[/green]")
+                    else:
+                        self.console.print(f"[red]✗ {msg}[/red]")
+                else:
+                    det = self.tor_mgr.auto_detect_tor()
+                    s_status = "[green]ONLINE[/green]" if det.get("socks_found") else "[red]OFFLINE[/red]"
+                    c_status = "[green]ONLINE[/green]" if det.get("control_found") else "[red]OFFLINE[/red]"
+                    self.console.print(f"[bold cyan]Tor Network Status:[/bold cyan]")
+                    self.console.print(f" • SOCKS5 Proxy: 127.0.0.1:{det.get('socks_port')} ({s_status})")
+                    self.console.print(f" • Control Port: 127.0.0.1:{det.get('control_port')} ({c_status})")
+                    self.console.print(f" • Onion v3 Address: [bold magenta]{self.config.onion_address or 'Pending'}[/bold magenta]")
+                    self.console.print("[dim]Tip: Use '/tor restart' to refresh your onion service circuit.[/dim]\n")
 
             elif cmd == "/clear":
                 self.console.clear()
