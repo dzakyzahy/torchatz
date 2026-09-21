@@ -98,8 +98,11 @@ COMMANDS = [
     "/contacts",
     "/list",
     "/connect",
+    "/disconnect",
     "/reconnect",
     "/chat",
+    "/home",
+    "/leave",
     "/paste",
     "/send",
     "/sendfile",
@@ -121,6 +124,7 @@ class TerminalUI:
         self.console = Console()
         self.active_peer_onion: Optional[str] = None
         self.active_peer_alias: Optional[str] = None
+        self.auto_switch_chat: bool = True
         self.history = InMemoryHistory()
         self.completer = WordCompleter(COMMANDS, ignore_case=True)
 
@@ -182,6 +186,8 @@ class TerminalUI:
         table.add_row("/connect <alias/onion>", "Connect to a peer over Tor network")
         table.add_row("/reconnect", "Retry connecting to all offline contacts")
         table.add_row("/chat <alias/onion>", "Select active peer to chat with (or switch conversation)")
+        table.add_row("/home or /leave", "Exit active chat room and return to Home menu")
+        table.add_row("/disconnect [alias]", "Disconnect active connection to a peer")
         table.add_row("/paste", "Paste & send text/code directly from clipboard")
         table.add_row("/send <filepath>", "Send a photo, video, or file to the active peer")
         table.add_row("/files", "List downloaded files in the downloads/ directory")
@@ -262,11 +268,13 @@ class TerminalUI:
         timestr = time.strftime("%H:%M:%S", time.localtime(ts))
         self.console.print(f"\n[bold magenta][{timestr}] <{sender_username} ({alias})>[/bold magenta] {text}")
 
-        # Auto-select active chat to the incoming sender if not yet set
-        if not self.active_peer_onion:
+        # Auto-select active chat ONLY IF:
+        # 1. No active peer is selected, AND
+        # 2. self.auto_switch_chat is True (user has not explicitly exited to Home via /home)
+        if not self.active_peer_onion and self.auto_switch_chat:
             self.active_peer_onion = sender_onion
             self.active_peer_alias = alias
-            self.console.print(f"[dim]>> Obrolan otomatis disetel ke {alias}. Langsung ketik balasan lalu Enter.[/dim]")
+            self.console.print(f"[dim]>> Obrolan otomatis disetel ke {alias}. Ketik /home untuk kembali ke Home.[/dim]")
 
     def on_file_start(self, sender_onion: str, sender_username: str, filename: str, filesize: int) -> None:
         alias = self.config.get_alias(sender_onion)
@@ -304,22 +312,17 @@ class TerminalUI:
     def run(self) -> None:
         self.print_banner()
 
-        # Background worker: auto-connect to contacts on startup and periodically check offline contacts
-        def _auto_connect_loop():
-            time.sleep(3)
-            while self.is_running:
-                if self.config.contacts:
-                    for onion in list(self.config.contacts.keys()):
-                        if not self.is_running:
-                            break
-                        if not self.net_mgr.is_peer_online(onion):
-                            self.net_mgr.connect_to_peer(onion, silent=True)
-                for _ in range(45):
+        # Background worker: auto-connect to contacts ONCE on startup (no aggressive infinite loop)
+        def _startup_auto_connect():
+            time.sleep(2)
+            if self.config.contacts and self.is_running:
+                for onion in list(self.config.contacts.keys()):
                     if not self.is_running:
                         break
-                    time.sleep(1)
+                    if not self.net_mgr.is_peer_online(onion):
+                        self.net_mgr.connect_to_peer(onion, silent=True)
 
-        threading.Thread(target=_auto_connect_loop, daemon=True).start()
+        threading.Thread(target=_startup_auto_connect, daemon=True).start()
 
         while self.is_running:
             try:
@@ -474,9 +477,43 @@ class TerminalUI:
                     else:
                         self.active_peer_onion = onion
                         self.active_peer_alias = self.config.get_alias(onion)
+                        self.auto_switch_chat = True
                         self.console.print(f"[green]Active chat switched to: {self.active_peer_alias} ({self.active_peer_onion})[/green]")
                         # Automatically initiate connection if not already connected
                         if not self.net_mgr.is_peer_online(onion):
+                            self.net_mgr.connect_to_peer(onion)
+
+            elif cmd in ("/home", "/leave", "/back", "/main"):
+                if self.active_peer_onion:
+                    old_alias = self.active_peer_alias
+                    self.active_peer_onion = None
+                    self.active_peer_alias = None
+                    self.auto_switch_chat = False
+                    self.console.print(f"[yellow]Keluar dari ruang obrolan dengan {old_alias}. Kembali ke menu Home.[/yellow]")
+                    self.console.print("[dim]Tip: Pesan baru tetap muncul di layar. Ketik /chat <alias> kapan pun untuk masuk lagi.[/dim]")
+                else:
+                    self.console.print("[yellow]Anda sudah berada di menu Home.[/yellow]")
+
+            elif cmd == "/disconnect":
+                target = arg1 or self.active_peer_alias or self.active_peer_onion
+                if not target:
+                    self.console.print("[red]Usage: /disconnect <alias_or_onion>[/red]")
+                else:
+                    onion = self.config.resolve_onion(target)
+                    if not onion and target in self.net_mgr.connections:
+                        onion = target
+                    if onion:
+                        conn = self.net_mgr.get_connection(onion)
+                        if conn:
+                            conn.close()
+                            if self.active_peer_onion == onion:
+                                self.active_peer_onion = None
+                                self.active_peer_alias = None
+                            self.console.print(f"[yellow]Koneksi ke {target} telah diputus.[/yellow]")
+                        else:
+                            self.console.print(f"[yellow]Tidak ada koneksi aktif ke {target}.[/yellow]")
+                    else:
+                        self.console.print(f"[red]Kontak '{target}' tidak ditemukan.[/red]")
             elif cmd == "/paste":
                 if not self.active_peer_onion:
                     self.console.print("[yellow]No active peer selected. Choose one with /chat <alias>[/yellow]")
