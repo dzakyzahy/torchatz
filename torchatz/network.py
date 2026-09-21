@@ -334,44 +334,64 @@ class NetworkManager:
                 return True, f"Already connected to {peer_onion}"
 
         def _worker():
-            self.on_system_log("info", f"Building Tor circuit to {peer_onion[:12]}...onion:{port}")
-            try:
-                sock = socks.socksocket()
-                sock.set_proxy(
-                    socks.SOCKS5,
-                    self.config.settings.get("socks_host", "127.0.0.1"),
-                    self.config.socks_port,
-                    rdns=True
-                )
-                sock.settimeout(60.0)  # Onion circuits can take up to 30-45s on first handshake
-                sock.connect((peer_onion, port))
-                sock.settimeout(None)
+            alias = self.config.get_alias(peer_onion)
+            max_retries = 3
 
-                peer = PeerConnection(
-                    sock=sock,
-                    is_outbound=True,
-                    config=self.config,
-                    file_mgr=self.file_mgr,
-                    on_message=self.on_message,
-                    on_file_start=self.on_file_start,
-                    on_file_progress=self.on_file_progress,
-                    on_file_complete=self.on_file_complete,
-                    on_status_change=self._handle_peer_status,
-                    target_onion=peer_onion
-                )
+            for attempt in range(1, max_retries + 1):
+                if not self._is_running:
+                    break
 
                 with self._lock:
-                    self.connections[peer_onion] = peer
+                    if peer_onion in self.connections and self.connections[peer_onion].is_alive:
+                        return
 
-                self.on_system_log("success", f"Connected to {self.config.get_alias(peer_onion)} ({peer_onion[:12]}...onion)")
+                if attempt == 1:
+                    self.on_system_log("info", f"Building Tor circuit to {alias} ({peer_onion[:12]}...onion)")
+                else:
+                    self.on_system_log("info", f"Retrying circuit to {alias} (attempt {attempt}/{max_retries}, awaiting Tor descriptor propagation)...")
 
-            except Exception as e:
-                err_msg = str(e)
-                alias = self.config.get_alias(peer_onion)
-                hint = ""
-                if "0x05" in err_msg or "0x04" in err_msg or "timed out" in err_msg or "refused" in err_msg:
-                    hint = " (Note: Tor v3 takes 30-60s to publish descriptors across the Tor network after startup. Both laptops should /add each other, wait ~30s, and retry with /connect)"
-                self.on_system_log("error", f"Connection failed to {alias}: {err_msg}{hint}")
+                try:
+                    sock = socks.socksocket()
+                    sock.set_proxy(
+                        socks.SOCKS5,
+                        self.config.settings.get("socks_host", "127.0.0.1"),
+                        self.config.socks_port,
+                        rdns=True
+                    )
+                    sock.settimeout(45.0)  # Onion rendezvous timeout
+                    sock.connect((peer_onion, port))
+                    sock.settimeout(None)
+
+                    peer = PeerConnection(
+                        sock=sock,
+                        is_outbound=True,
+                        config=self.config,
+                        file_mgr=self.file_mgr,
+                        on_message=self.on_message,
+                        on_file_start=self.on_file_start,
+                        on_file_progress=self.on_file_progress,
+                        on_file_complete=self.on_file_complete,
+                        on_status_change=self._handle_peer_status,
+                        target_onion=peer_onion
+                    )
+
+                    with self._lock:
+                        self.connections[peer_onion] = peer
+
+                    self.on_system_log("success", f"Connected to {alias} ({peer_onion[:12]}...onion) - ONLINE!")
+                    return
+
+                except Exception as e:
+                    err_msg = str(e)
+                    if attempt < max_retries and ("0x01" in err_msg or "timed out" in err_msg or "0x05" in err_msg):
+                        time.sleep(8)
+                        continue
+                    else:
+                        hint = ""
+                        if "0x01" in err_msg or "0x05" in err_msg or "0x04" in err_msg:
+                            hint = " (Tip: Peer's Tor descriptor is still propagating globally or peer laptop is offline. Make sure both laptops have /add-ed each other and retry /connect in 30s)"
+                        self.on_system_log("error", f"Connection failed to {alias}: {err_msg}{hint}")
+                        break
 
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
