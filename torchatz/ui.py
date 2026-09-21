@@ -68,7 +68,7 @@ class TerminalUI:
         banner_content = Text()
         banner_content.append("• Anonymity: ")
         banner_content.append("100% Tor Onion Service (No IP / No Network / No OS Leak)\n", style="yellow")
-        banner_content.append("• My Onion: ")
+        banner_content.append("• My Onion:\n  ", style="bold yellow")
         banner_content.append(f"{self.config.onion_address or 'Initializing...'}\n", style="bold magenta")
         banner_content.append("• My Nick: ")
         banner_content.append(f"{self.config.username}\n", style="bold cyan")
@@ -114,17 +114,13 @@ class TerminalUI:
         socks_p = self.config.socks_port
         listen_p = self.config.listen_port
 
-        table = Table(title="My Identity & Network Status", border_style="cyan")
-        table.add_column("Property", style="bold yellow")
-        table.add_column("Value", style="bold green")
-
-        table.add_row("Username", user)
-        table.add_row("Onion Address (v3)", onion)
-        table.add_row("SOCKS5 Proxy", f"127.0.0.1:{socks_p}")
-        table.add_row("Local Inbound Listener", f"127.0.0.1:{listen_p}")
-        table.add_row("Downloads Folder", str(self.config.downloads_dir.resolve()))
-
-        self.console.print(table)
+        self.console.print("\n[bold cyan]─── TorChatZ Identity & Network ───[/bold cyan]")
+        self.console.print(f" • Username      : [bold white]{user}[/bold white]")
+        self.console.print(f" • Onion Address : [bold magenta]{onion}[/bold magenta]")
+        self.console.print(f" • SOCKS5 Proxy  : [green]127.0.0.1:{socks_p}[/green]")
+        self.console.print(f" • Local Listener: [green]127.0.0.1:{listen_p}[/green]")
+        self.console.print(f" • Downloads Dir : [dim]{self.config.downloads_dir.resolve()}[/dim]")
+        self.console.print("[dim]Tip: Salin seluruh 56 karakter alamat .onion di atas untuk diberikan ke lawan chat.[/dim]\n")
 
     def print_contacts(self) -> None:
         table = Table(title="Contacts List", border_style="magenta")
@@ -302,11 +298,17 @@ class TerminalUI:
                 if not arg1:
                     self.console.print("[red]Usage: /add <onion_address> [alias][/red]")
                 else:
-                    onion = self.config.add_contact(arg1, arg2 or None)
-                    alias = self.config.get_alias(onion)
-                    self.console.print(f"[green]Added contact: {alias} ({onion})[/green]")
-                    # Auto-connect immediately
-                    self.net_mgr.connect_to_peer(onion)
+                    valid, msg, formatted_onion = Config.validate_onion_address(arg1)
+                    if not valid:
+                        self.console.print(f"[bold red]✗ {msg}[/bold red]")
+                        clean_input = arg1.strip().lower().replace(".onion", "")
+                        self.console.print(f"[dim]Input Anda: '{arg1}' ({len(clean_input)} karakter sebelum .onion)[/dim]")
+                    else:
+                        onion = self.config.add_contact(formatted_onion, arg2 or None)
+                        alias = self.config.get_alias(onion)
+                        self.console.print(f"[green]Added contact: {alias} ({onion})[/green]")
+                        # Auto-connect immediately
+                        self.net_mgr.connect_to_peer(onion)
 
             elif cmd == "/del":
                 if not arg1:
@@ -323,8 +325,12 @@ class TerminalUI:
                 else:
                     onion = self.config.resolve_onion(arg1)
                     if not onion:
-                        self.console.print(f"[red]Could not resolve onion address for: {arg1}[/red]")
-                    else:
+                        valid, msg, formatted_onion = Config.validate_onion_address(arg1)
+                        if valid:
+                            onion = formatted_onion
+                        else:
+                            self.console.print(f"[red]Could not resolve: {arg1} ({msg})[/red]")
+                    if onion:
                         self.net_mgr.connect_to_peer(onion)
 
             elif cmd == "/reconnect":

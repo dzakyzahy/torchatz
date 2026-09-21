@@ -125,6 +125,25 @@ class Config:
         self.settings["private_key"] = key_data
         self.save_settings()
 
+    @staticmethod
+    def validate_onion_address(onion: str) -> Tuple[bool, str, str]:
+        """Validates that an onion address conforms to Tor v3 specifications (56 base32 characters)."""
+        import re
+        clean = onion.strip().lower()
+        if clean.endswith(".onion"):
+            prefix = clean[:-6]
+        else:
+            prefix = clean
+            clean += ".onion"
+
+        if len(prefix) != 56:
+            return False, f"Alamat Onion v3 harus tepat 56 karakter (saat ini {len(prefix)} karakter). Periksa apakah huruf awal/akhir terpotong saat copy!", clean
+
+        if not re.match("^[a-z2-7]{56}$", prefix):
+            return False, "Alamat Onion mengandung karakter tidak valid (Tor v3 hanya menggunakan huruf a-z dan angka 2-7).", clean
+
+        return True, "Alamat Onion v3 valid.", clean
+
     # --- Contact management ---
     def add_contact(self, onion: str, alias: Optional[str] = None, notes: str = "") -> str:
         onion = onion.strip().lower()

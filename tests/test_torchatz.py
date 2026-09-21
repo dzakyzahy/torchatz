@@ -148,6 +148,21 @@ class TestTorChatZProtocol(unittest.TestCase):
             self.assertFalse(net_mgr.is_peer_online("testonion123456.onion"))
             self.assertIsNone(net_mgr.get_connection("testonion123456.onion"))
 
+    def test_validate_onion_address(self):
+        # 55 chars (invalid)
+        ok, msg, _ = Config.validate_onion_address("cs4zuoxcioglro3hffmjsjl2bwbcoqzohp2mvyzmlo2fqzgzsnxijqd.onion")
+        self.assertFalse(ok)
+        self.assertIn("56 karakter", msg)
+
+        # 56 chars (valid)
+        ok, msg, formatted = Config.validate_onion_address("4to5a3j6g5ioqrdp3a7de7n5x3tb2dfrqdzcwt6kgypkt7qwibtxgryd.onion")
+        self.assertTrue(ok)
+        self.assertEqual(formatted, "4to5a3j6g5ioqrdp3a7de7n5x3tb2dfrqdzcwt6kgypkt7qwibtxgryd.onion")
+
+        # Invalid chars (contains 0, 1, 8, 9)
+        ok, msg, _ = Config.validate_onion_address("4to5a3j6g5ioqrdp3a7de7n5x3tb2dfrqdzcwt6kgypkt7qwibtxgry9.onion")
+        self.assertFalse(ok)
+
 
 if __name__ == "__main__":
     unittest.main()
