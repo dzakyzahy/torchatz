@@ -169,6 +169,44 @@ class TestTorChatZProtocol(unittest.TestCase):
         ok, msg, _ = Config.validate_onion_address("4to5a3j6g5ioqrdp3a7de7n5x3tb2dfrqdzcwt6kgypkt7qwibtxgry9.onion")
         self.assertFalse(ok)
 
+    def test_clipboard_copy_and_paste_integrity(self):
+        from torchatz.ui import set_clipboard_text, get_clipboard_text, TerminalUI
+
+        test_multiline_script = (
+            "#!/usr/bin/env bash\n"
+            "for i in {1..5}; do\n"
+            "    echo \"TorChatZ Secure Script Run: $i\"\n"
+            "done\n"
+        )
+
+        # Verify set and get from OS clipboard
+        ok = set_clipboard_text(test_multiline_script)
+        if ok:
+            retrieved = get_clipboard_text()
+            # Normalize potential CRLF to LF for comparison across Windows clipboard
+            self.assertEqual(retrieved.replace("\r\n", "\n"), test_multiline_script)
+
+        # Test TerminalUI message history and last_received_message
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config(data_dir=Path(tmpdir))
+            class MockTor:
+                pass
+            class MockNet:
+                def __init__(self):
+                    self.connections = {}
+            ui = TerminalUI(config, MockTor(), MockNet())
+
+            # Simulate incoming message
+            ui.on_message_received("testonion123456.onion", "Anon_4fb1", test_multiline_script, 1700000000)
+            self.assertEqual(ui.last_received_message, test_multiline_script)
+            self.assertEqual(len(ui.chat_history), 1)
+            self.assertEqual(ui.chat_history[0]["text"], test_multiline_script)
+
+            # Test /c command
+            ui.handle_input("/c")
+            res_c = get_clipboard_text().replace("\r\n", "\n")
+            self.assertEqual(res_c, test_multiline_script)
+
 
 if __name__ == "__main__":
     unittest.main()

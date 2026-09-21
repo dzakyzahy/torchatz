@@ -80,17 +80,27 @@
 | `/help` | Menampilkan panduan dan daftar seluruh perintah yang tersedia. |
 | `/myid` | Menampilkan alamat `.onion` v3 Anda, username, dan port koneksi saat ini. |
 | `/nick <nama>` | Mengubah nama tampilan/username pseudonim Anda saat ini. |
-| `/add <onion> [alias]` | Menambahkan teman ke daftar kontak dengan nama alias opsional. |
+| `/add <onion> [alias]` | Menambahkan teman ke daftar kontak dengan validasi ketat 56 karakter. |
+| `/alias <lama> <baru>` | Mengganti alias nama kontak tersimpan (atau `/rename`). |
 | `/del <alias/onion>` | Menghapus teman dari daftar kontak. |
 | `/contacts` atau `/list` | Menampilkan tabel seluruh kontak beserta status online/offline. |
 | `/connect <alias/onion>` | Membuka sirkuit koneksi Tor ke alamat teman. |
 | `/chat <alias/onion>` | Memilih lawan bicara aktif untuk sesi chat langsung. |
+| `/home` atau `/leave` | Keluar dari obrolan aktif dan kembali ke prompt menu utama. |
+| `/disconnect [alias]` | Memutuskan koneksi aktif ke kontak tertentu. |
+| `/copy` atau `/c` | **Menyalin chat/skrip kode terakhir ke clipboard OS** (format, spasi, & indentasi 100% utuh tanpa rusak). Dukung juga `/c <1..N>` atau `/c me`. |
+| `/paste` atau `/p` | **Mem-paste & mengirim teks/skrip multiline dari clipboard** langsung tanpa terpotong atau rusak oleh terminal. |
 | `/send <path_file>` | Mengirim file (gambar, video, dokumen) ke kontak yang sedang aktif di `/chat`. |
 | `/files` | Melihat daftar file yang berhasil diunduh di folder `downloads/`. |
+| `/update` atau `/pull` | Menarik pembaruan dari GitHub (`git pull`) dan otomatis memuat ulang (*in-place reload*) tanpa keluar terminal. Dukung `/update force`. |
+| `/restart` | Me-restart TorChatZ secara langsung tanpa menutup jendela terminal. |
+| `/tor [restart]` | Melihat status daemon Tor atau merestart sirkuit onion service. |
 | `/clear` | Membersihkan layar terminal. |
 | `/quit` atau `/exit` | Menutup aplikasi dan melepaskan sirkuit Tor secara bersih. |
 
-> 💡 **Tips Mengetik Chat**: Setelah Anda memilih lawan bicara dengan `/chat <alias>`, Anda bisa langsung mengetik pesan dan menekan `Enter` untuk mengirim, atau `Ctrl+V` untuk mem-paste teks.
+> 💡 **Tips Mengetik Chat & Skrip**:
+> - Gunakan `/p` untuk mengirim skrip kode multi-baris dari clipboard tanpa baris baru yang berantakan.
+> - Gunakan `/c` untuk langsung menyalin skrip/pesan yang baru saja dikirimkan teman ke clipboard sistem laptop Anda tanpa perlu seleksi mouse yang merusak indentasi.
 
 ---
 

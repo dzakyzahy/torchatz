@@ -87,6 +87,79 @@ def get_clipboard_text() -> str:
     return ""
 
 
+def set_clipboard_text(text: str) -> bool:
+    """Safely copies text to the operating system clipboard (Windows & Linux)."""
+    import sys
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+
+            GMEM_MOVEABLE = 0x0002
+            CF_UNICODETEXT = 13
+
+            user32.OpenClipboard.argtypes = [wintypes.HWND]
+            user32.OpenClipboard.restype = wintypes.BOOL
+            user32.EmptyClipboard.argtypes = []
+            user32.EmptyClipboard.restype = wintypes.BOOL
+            user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+            user32.SetClipboardData.restype = wintypes.HANDLE
+            user32.CloseClipboard.argtypes = []
+            user32.CloseClipboard.restype = wintypes.BOOL
+
+            kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+            kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+            kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+            kernel32.GlobalLock.restype = wintypes.LPVOID
+            kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+            kernel32.GlobalUnlock.restype = wintypes.BOOL
+
+            if user32.OpenClipboard(None):
+                try:
+                    user32.EmptyClipboard()
+                    encoded = text.encode("utf-16-le") + b"\x00\x00"
+                    h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
+                    if h_mem:
+                        p_mem = kernel32.GlobalLock(h_mem)
+                        if p_mem:
+                            ctypes.memmove(p_mem, encoded, len(encoded))
+                            kernel32.GlobalUnlock(h_mem)
+                            user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+                            return True
+                finally:
+                    user32.CloseClipboard()
+        except Exception:
+            pass
+
+    elif sys.platform.startswith("linux"):
+        import shutil, subprocess
+        for bin_cmd in [["xclip", "-selection", "clipboard"], ["xsel", "-b", "-i"], ["wl-copy"]]:
+            if shutil.which(bin_cmd[0]):
+                try:
+                    res = subprocess.run(bin_cmd, input=text, text=True, timeout=2)
+                    if res.returncode == 0:
+                        return True
+                except Exception:
+                    pass
+
+    # Fallback to tkinter
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        root.clipboard_clear()
+        root.clipboard_append(text)
+        root.update()
+        root.destroy()
+        return True
+    except Exception:
+        pass
+
+    return False
+
+
 COMMANDS = [
     "/help",
     "/myid",
@@ -103,7 +176,10 @@ COMMANDS = [
     "/chat",
     "/home",
     "/leave",
+    "/copy",
+    "/c",
     "/paste",
+    "/p",
     "/send",
     "/sendfile",
     "/files",
@@ -125,10 +201,23 @@ class TerminalUI:
         self.tor_mgr = tor_mgr
         self.net_mgr = net_mgr
 
-        self.console = Console()
+        if sys.platform == "win32":
+            try:
+                if hasattr(sys.stdout, "reconfigure"):
+                    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+                if hasattr(sys.stderr, "reconfigure"):
+                    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+        self.console = Console(safe_box=True)
         self.active_peer_onion: Optional[str] = None
         self.active_peer_alias: Optional[str] = None
         self.auto_switch_chat: bool = True
+        self.last_received_message: Optional[str] = None
+        self.last_received_from: Optional[str] = None
+        self.last_sent_message: Optional[str] = None
+        self.chat_history: List[Dict[str, Any]] = []
         self.history = InMemoryHistory()
         self.completer = WordCompleter(COMMANDS, ignore_case=True)
 
@@ -146,11 +235,20 @@ class TerminalUI:
             if txt:
                 event.current_buffer.insert_text(txt)
 
-        self.session = PromptSession(
-            history=self.history,
-            completer=self.completer,
-            key_bindings=self.kb
-        )
+        try:
+            self.session = PromptSession(
+                history=self.history,
+                completer=self.completer,
+                key_bindings=self.kb
+            )
+        except Exception:
+            from prompt_toolkit.output import DummyOutput
+            self.session = PromptSession(
+                history=self.history,
+                completer=self.completer,
+                key_bindings=self.kb,
+                output=DummyOutput()
+            )
         self.is_running = True
 
     def print_banner(self) -> None:
@@ -166,7 +264,7 @@ class TerminalUI:
         banner_content.append("• Help: Type ")
         banner_content.append("/help", style="bold white on blue")
         banner_content.append(" for list of commands.\n")
-        banner_content.append("• Copy & Paste: Standard terminal copy / paste (Ctrl+V / Right-Click) is fully supported.")
+        banner_content.append("• Quick Clipboard: /p to paste & send, /c to copy last message intact.\n")
 
         panel = Panel(
             banner_content,
@@ -192,7 +290,8 @@ class TerminalUI:
         table.add_row("/chat <alias/onion>", "Select active peer to chat with (or switch conversation)")
         table.add_row("/home or /leave", "Exit active chat room and return to Home menu")
         table.add_row("/disconnect [alias]", "Disconnect active connection to a peer")
-        table.add_row("/paste", "Paste & send text/code directly from clipboard")
+        table.add_row("/copy or /c [1..N/me]", "Copy last received message/script to clipboard intact")
+        table.add_row("/paste or /p", "Paste & send text/code directly from clipboard")
         table.add_row("/send <filepath>", "Send a photo, video, or file to the active peer")
         table.add_row("/files", "List downloaded files in the downloads/ directory")
         table.add_row("/tor [restart]", "Show Tor daemon status or restart onion circuit")
@@ -268,10 +367,17 @@ class TerminalUI:
 
         self.console.print(table)
 
-    # --- Callbacks from Network Layer ---
     def on_message_received(self, sender_onion: str, sender_username: str, text: str, ts: int) -> None:
         alias = self.config.get_alias(sender_onion)
         timestr = time.strftime("%H:%M:%S", time.localtime(ts))
+        self.last_received_message = text
+        self.last_received_from = f"{sender_username} ({alias})"
+        self.chat_history.append({
+            "sender": f"{sender_username} ({alias})",
+            "text": text,
+            "ts": ts,
+            "is_me": False
+        })
         self.console.print(f"\n[bold magenta][{timestr}] <{sender_username} ({alias})>[/bold magenta] {text}")
 
         # Auto-select active chat ONLY IF:
@@ -520,7 +626,48 @@ class TerminalUI:
                             self.console.print(f"[yellow]Tidak ada koneksi aktif ke {target}.[/yellow]")
                     else:
                         self.console.print(f"[red]Kontak '{target}' tidak ditemukan.[/red]")
-            elif cmd == "/paste":
+            elif cmd in ("/copy", "/c"):
+                target_msg = None
+                source_label = ""
+
+                if arg1.isdigit():
+                    idx = int(arg1)
+                    if 1 <= idx <= len(self.chat_history):
+                        item = self.chat_history[-idx]
+                        target_msg = item["text"]
+                        source_label = f"pesan ke-{idx} terakhir dari {item['sender']}"
+                    else:
+                        self.console.print(f"[yellow]Index riwayat tidak valid. Tersedia {len(self.chat_history)} pesan.[/yellow]")
+                        return
+                elif arg1.lower() in ("me", "my", "sent"):
+                    target_msg = self.last_sent_message
+                    source_label = "pesan terakhir yang kamu kirim"
+                else:
+                    if self.last_received_message:
+                        target_msg = self.last_received_message
+                        source_label = f"pesan terakhir dari {self.last_received_from or 'teman'}"
+                    elif self.last_sent_message:
+                        target_msg = self.last_sent_message
+                        source_label = "pesan terakhir yang kamu kirim"
+
+                if not target_msg:
+                    self.console.print("[yellow]Belum ada pesan obrolan dalam sesi ini untuk disalin.[/yellow]")
+                else:
+                    if set_clipboard_text(target_msg):
+                        lines = target_msg.splitlines()
+                        num_lines = len(lines) if lines else 1
+                        num_chars = len(target_msg)
+                        self.console.print(f"[bold green]✓ Berhasil menyalin {source_label} ke clipboard![/bold green]")
+                        self.console.print(f"[dim]Format, indentasi, & baris baru 100% utuh ({num_lines} baris, {num_chars} karakter).[/dim]")
+                        if num_lines <= 6:
+                            self.console.print(f"[dim]{target_msg}[/dim]")
+                        else:
+                            preview = "\n".join(lines[:3]) + f"\n... [+{num_lines - 3} baris lagi] ..."
+                            self.console.print(f"[dim]{preview}[/dim]")
+                    else:
+                        self.console.print("[red]Gagal menyalin ke clipboard sistem.[/red]")
+
+            elif cmd in ("/paste", "/p"):
                 if not self.active_peer_onion:
                     self.console.print("[yellow]No active peer selected. Choose one with /chat <alias>[/yellow]")
                 else:
@@ -536,6 +683,13 @@ class TerminalUI:
                             if conn.send_chat(clip_text):
                                 timestr = time.strftime("%H:%M:%S")
                                 lines = clip_text.splitlines()
+                                self.last_sent_message = clip_text
+                                self.chat_history.append({
+                                    "sender": "Me",
+                                    "text": clip_text,
+                                    "ts": time.time(),
+                                    "is_me": True
+                                })
                                 self.console.print(f"[bold cyan][{timestr}] <Me (Pasted {len(lines)} lines / {len(clip_text)} chars)>[/bold cyan]")
                                 if len(lines) <= 12:
                                     self.console.print(f"[dim]{clip_text}[/dim]")
@@ -633,6 +787,13 @@ class TerminalUI:
 
             if conn.send_chat(text):
                 timestr = time.strftime("%H:%M:%S")
+                self.last_sent_message = text
+                self.chat_history.append({
+                    "sender": "Me",
+                    "text": text,
+                    "ts": time.time(),
+                    "is_me": True
+                })
                 self.console.print(f"[bold cyan][{timestr}] <Me>[/bold cyan] {text}")
             else:
                 self.console.print("[red]Failed to send message. Connection dropped.[/red]")
