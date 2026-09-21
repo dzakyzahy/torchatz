@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# TorChatZ user data & security (DO NOT COMMIT ONION KEYS OR PRIVATE CHATS)
+data/
+downloads/
+contacts.json
+settings.json
+*.key
+*.onion_key
+tor_data/
+tor_hidden_service/
+tor.log
+
+# IDE & OS specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

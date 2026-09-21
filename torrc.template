@@ -1,0 +1,23 @@
+# ==============================================================================
+# TorChatZ - Sample torrc configuration
+# For Kali Linux: copy relevant lines to /etc/tor/torrc
+# For Windows: use this with tor.exe -f torrc
+# ==============================================================================
+
+# Standard SOCKS5 Proxy
+SocksPort 9050
+
+# Control Port for automatic ephemeral hidden service creation (ADD_ONION)
+ControlPort 9051
+CookieAuthentication 1
+
+# Optional: Static Hidden Service setup for TorChatZ (Port 11009)
+# If you prefer a static onion address instead of ephemeral:
+#
+# HiddenServiceDir /var/lib/tor/torchatz/
+# HiddenServiceVersion 3
+# HiddenServicePort 11009 127.0.0.1:11009
+#
+# The generated onion address will be stored in:
+#   Linux:   /var/lib/tor/torchatz/hostname
+#   Windows: (HiddenServiceDir)/hostname
