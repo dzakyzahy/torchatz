@@ -17,12 +17,13 @@ fi
 # 2. Check Tor service
 if ! pgrep -x "tor" > /dev/null; then
     echo -e "\033[1;33m[!] Tor service is not running.\033[0m"
-    echo -e "\033[1;32m[*] Attempting to start Tor service (sudo systemctl start tor)...\033[0m"
-    sudo systemctl start tor || {
-        echo -e "\033[1;31m[!] Could not start Tor automatically. Please run:\033[0m"
-        echo -e "    sudo apt install -y tor"
-        echo -e "    sudo systemctl enable --now tor"
-    }
+    if [ -f "$(dirname "$0")/setup_tor_kali.sh" ]; then
+        echo -e "\033[1;34m[*] Running automatic Tor CLI setup...\033[0m"
+        bash "$(dirname "$0")/setup_tor_kali.sh" || true
+    else
+        echo -e "\033[1;32m[*] Attempting to start Tor service (sudo systemctl start tor)...\033[0m"
+        sudo systemctl start tor || true
+    fi
 fi
 
 # 3. Check / Install Python dependencies

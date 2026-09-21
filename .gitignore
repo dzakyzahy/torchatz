@@ -20,6 +20,8 @@ settings.json
 tor_data/
 tor_hidden_service/
 tor.log
+bin/
+*.tar.gz
 
 # IDE & OS specific files
 .idea/

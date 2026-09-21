@@ -101,11 +101,12 @@ class TorManager:
 
                 self.controller = controller
 
-                key_type = "ED25519-V3"
-                key_content = "NEW"
                 if self.config.private_key:
                     key_type = "ED25519-V3"
                     key_content = self.config.private_key
+                else:
+                    key_type = "NEW"
+                    key_content = "ED25519-V3"
 
                 # Port mapping: remote port (11009) -> local port (11009 on 127.0.0.1)
                 response = controller.create_ephemeral_hidden_service(

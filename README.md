@@ -28,55 +28,47 @@
 
 ## 🚀 Panduan Cepat (Quick Start)
 
-### 🐧 1. Penggunaan di Kali Linux
+### 🐧 1. Penggunaan di Kali Linux (100% CLI)
 
-1. **Clone repository**:
+1. **Clone repository & masuk ke folder**:
    ```bash
    git clone https://github.com/dzakyzahy/torchatz.git
    cd torchatz
    ```
 
-2. **Jalankan service Tor**:
+2. **Setup Tor Daemon CLI (Otomatis)**:
    ```bash
-   sudo apt update
-   sudo apt install -y tor python3 python3-pip
-   sudo systemctl start tor
+   chmod +x scripts/*.sh
+   ./scripts/setup_tor_kali.sh
    ```
+   *Script ini otomatis menginstal Tor, mengonfigurasi ControlPort 9051, dan mengaktifkan service background.*
 
-3. **Install dependensi & jalankan**:
+3. **Jalankan TorChatZ**:
    ```bash
-   chmod +x scripts/start_kali.sh
    ./scripts/start_kali.sh
-   ```
-   *Atau jalankan manual:*
-   ```bash
-   pip install -r requirements.txt
-   python3 torchatz.py
    ```
 
 ---
 
-### 🪟 2. Penggunaan di Windows (CMD / PowerShell)
+### 🪟 2. Penggunaan di Windows Terminal / CMD / PowerShell (100% CLI - No GUI)
 
-1. **Pastikan Tor berjalan di Windows**:
-   - Opsi termudah: Buka **Tor Browser** dan biarkan berjalan di latar belakang (secara default menyediakan SOCKS5 proxy di `127.0.0.1:9150`).
-   - Atau jalankan **Tor Expert Bundle** (`tor.exe`).
-
-2. **Clone & Masuk ke Folder**:
+1. **Clone & Masuk ke Folder**:
    ```cmd
    git clone https://github.com/dzakyzahy/torchatz.git
    cd torchatz
    ```
 
-3. **Jalankan via Script Batch atau Python**:
+2. **Install & Jalankan Tor Daemon via CLI (Otomatis)**:
+   ```cmd
+   scripts\install_tor_windows.bat
+   ```
+   *Script ini secara otomatis mendownload Tor Expert Bundle resmi via `curl`, mengekstrak ke `bin\tor`, membuat konfigurasi SOCKS5 + ControlPort 9051, dan menjalankannya di background.*
+
+3. **Jalankan TorChatZ**:
    ```cmd
    scripts\start_windows.bat
    ```
-   *Atau secara manual:*
-   ```cmd
-   python -m pip install -r requirements.txt
-   python torchatz.py
-   ```
+   *Jika Tor daemon belum jalan, script ini juga otomatis menawarkan download & run dalam 1 klik CLI.*
 
 ---
 

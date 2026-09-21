@@ -24,13 +24,17 @@ if %errorlevel% neq 0 (
 REM 2. Check Tor SOCKS5 port (9050 or 9150)
 netstat -ano | findstr "9050 9150" >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [!] Warning: Tor SOCKS5 proxy port (9050 or 9150) not detected!
-    echo     Please make sure Tor Browser or Tor Expert Bundle is running.
-    echo     - Tor Browser: Open Tor Browser and leave it open in the background (port 9150).
-    echo     - Or Tor Daemon: run tor.exe (port 9050).
-    echo.
-    echo Starting TorChatZ anyway...
-    echo.
+    if exist "%~dp0..\bin\tor\tor\tor.exe" (
+        echo [*] Tor CLI binary found. Starting background Tor daemon...
+        call "%~dp0run_tor_windows.bat"
+    ) else (
+        echo [!] Tor daemon (port 9050/9150) is not running.
+        echo [*] Would you like to automatically download and run Tor CLI Daemon now?
+        set /p "INSTALL_TOR=[Y/N] (Default: Y): "
+        if /i "!INSTALL_TOR!" neq "n" (
+            call "%~dp0install_tor_windows.bat"
+        )
+    )
 )
 
 REM 3. Install/verify dependencies
